@@ -1,13 +1,16 @@
 import re
 import os
 import random
+import pandas as pd
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 import torch
-from peft.peft_model import PeftModelForCausalLM
+import matplotlib.pyplot as plt
+
+# Plot the training and validation losses
+
 torch.manual_seed(42)
 
-from turbo_alignment.common.data.io import write_jsonl
 from turbo_alignment.dataset.chat.models import ChatMessage, ChatMessageRole, ChatDatasetRecord
 from turbo_alignment.dataset.pair_preferences.models import PairPreferenceRecord
 from turbo_alignment.pipelines.train import TrainDPOStrategy
@@ -92,7 +95,7 @@ def get_cherry_pick_dataset():
     return [ ChatDatasetRecord(id=i, messages=[ChatMessage(role=ChatMessageRole.USER, content=u)]).model_dump() for i, u in enumerate(uncensored_questions)]
 
 def train():
-    os.environ['CUDA_VISIBLE_DEVICES']="0"
+    #os.environ['CUDA_VISIBLE_DEVICES']="1"
     experiment_settings_path='tutorials/dpo/dpo.json'
     experiment_settings = DPOTrainExperimentSettings.parse_file(experiment_settings_path)
 
@@ -121,7 +124,22 @@ def train():
     
     experiment_settings.trainer_settings.fp16=False
 
-    TrainDPOStrategy().run(experiment_settings)
+    train_strategy=TrainDPOStrategy()
+    train_strategy.run(experiment_settings)
+
+    
+    log_df = pd.DataFrame(train_strategy.trainer.state.log_history)
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(log_df['epoch'], log_df['loss'], label='Training Loss')
+    
+    num_mask = ~log_df['eval_loss'].isna()
+    plt.plot(log_df['epoch'][num_mask], log_df['eval_loss'][num_mask], label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+    plt.show()
 
 if __name__=="__main__":
     #load_preference_dataset()
